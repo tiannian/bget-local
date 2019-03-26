@@ -1,13 +1,5 @@
-/*
-
-    Interface definitions for bget.c, the memory management package.
-
-*/
-
-#define TestProg    20000	      /* Generate built-in test program
-					 if defined.  The value specifies
-					 how many buffer allocation attempts
-					 the test program should make. */
+#ifndef _BGET_H
+#define _BGET_H
 
 #define SizeQuant   4		      /* Buffer allocation size quantum:
 					 all buffers allocated are a
@@ -50,13 +42,6 @@
 					 pool space control.  */
 
 
-#ifndef _
-#ifdef PROTOTYPES
-#define  _(x)  x		      /* If compiler knows prototypes */
-#else
-#define  _(x)  ()                     /* It it doesn't */
-#endif /* PROTOTYPES */
-#endif
 
 typedef long bufsize;
 
@@ -94,6 +79,7 @@ struct bfhead {
 
 typedef struct bctx {
     struct bfhead freelist;               /* List of free buffers */
+    void *p;
 #ifdef BufStats
     bufsize totalloc;	      /* Total space currently allocated */
     long numget, numrel;   /* Number of bget() and brel() calls */
@@ -108,9 +94,9 @@ typedef struct bctx {
 
 /* Automatic expansion block management functions */
 
-    int (*compfcn) _((bufsize sizereq, int sequence));
-    void *(*acqfcn) _((bufsize size));
-    void (*relfcn) _((void *buf));
+    int (*compfcn) (struct bctx *ctx, bufsize sizereq, int sequence);
+    void *(*acqfcn) (struct bctx *ctx, bufsize size);
+    void (*relfcn) (struct bctx *ctx, void *buf);
 
     bufsize exp_incr;	      /* Expansion block size */
     bufsize pool_len;	      /* 0: no bpool calls have been made
@@ -122,20 +108,22 @@ typedef struct bctx {
 #endif
 } bctx;
 
-void	bpool	    _((bctx *ctx, void *buffer, bufsize len));
-void   *bget	    _((bctx *ctx, bufsize size));
-void   *bgetz	    _((bctx *ctx, bufsize size));
-void   *bgetr	    _((bctx *ctx, void *buffer, bufsize newsize));
-void	brel	    _((bctx *ctx, void *buf));
-void	bectl	    _((bctx *ctx, 
-               int (*compact)(bufsize sizereq, int sequence),
-		       void *(*acquire)(bufsize size),
-		       void (*release)(void *buf), bufsize pool_incr));
-void	bstats	    _((bctx *ctx, bufsize *curalloc, bufsize *totfree,
-               bufsize *maxfree, long *nget, long *nrel));
-void	bstatse     _((bctx *ctx,  bufsize *pool_incr, long *npool, 
-               long *npget, long *nprel, long *ndget, long *ndrel));
-void	bufdump     _((bctx *ctx, void *buf));
-void	bpoold	    _((bctx *ctx, void *pool, int dumpalloc, int dumpfree));
-int	    bpoolv	    _((bctx *ctx, void *pool));
-void    binit       _((bctx *ctx));
+void	bpool	    (bctx *ctx, void *buffer, bufsize len);
+void   *bget	    (bctx *ctx, bufsize size);
+void   *bgetz	    (bctx *ctx, bufsize size);
+void   *bgetr	    (bctx *ctx, void *buffer, bufsize newsize);
+void	brel	    (bctx *ctx, void *buf);
+void	bectl	    (bctx *ctx, 
+               int (*compact)(bctx *ctx, bufsize sizereq, int sequence),
+		       void *(*acquire)(bctx *ctx, bufsize size),
+		       void (*release)(bctx *ctx, void *buf), bufsize pool_incr);
+void	bstats	    (bctx *ctx, bufsize *curalloc, bufsize *totfree,
+               bufsize *maxfree, long *nget, long *nrel);
+void	bstatse     (bctx *ctx,  bufsize *pool_incr, long *npool, 
+               long *npget, long *nprel, long *ndget, long *ndrel);
+void	bufdump     (bctx *ctx, void *buf);
+void	bpoold	    (bctx *ctx, void *pool, int dumpalloc, int dumpfree);
+int	    bpoolv	    (bctx *ctx, void *pool);
+void    binit       (bctx *ctx);
+
+#endif

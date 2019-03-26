@@ -86,7 +86,7 @@ void *bget(bctx *ctx,bufsize requested_size)
 #endif
 	b = ctx->freelist.ql.flink;
 #ifdef BestFit
-	best = &ctx->freelist;
+	best = &(ctx->freelist);
 #endif
 
 
@@ -94,9 +94,9 @@ void *bget(bctx *ctx,bufsize requested_size)
 	   to hold the requested size buffer. */
 
 #ifdef BestFit
-	while (b != &ctx->freelist) {
+	while (b != &(ctx->freelist)) {
 	    if (b->bh.bsize >= size) {
-		if ((best == &ctx->freelist) || (b->bh.bsize < best->bh.bsize)) {
+		if ((best == &(ctx->freelist)) || (b->bh.bsize < best->bh.bsize)) {
 		    best = b;
 		}
 	    }
@@ -105,7 +105,7 @@ void *bget(bctx *ctx,bufsize requested_size)
 	b = best;
 #endif /* BestFit */
 
-	while (b != &ctx->freelist) {
+	while (b != &(ctx->freelist)) {
 	    if ((bufsize) b->bh.bsize >= size) {
 
 		/* Buffer  is big enough to satisfy  the request.  Allocate it
@@ -176,7 +176,7 @@ void *bget(bctx *ctx,bufsize requested_size)
 	   defined,  notify  it  of the size requested.  If it returns
 	   TRUE, try the allocation again. */
 
-	if ((ctx->compfcn == NULL) || (!(*ctx->compfcn)(size, ++compactseq))) {
+	if ((ctx->compfcn == NULL) || (!(*(ctx->compfcn))(ctx, size, ++compactseq))) {
 	    break;
 	}
     }
@@ -194,8 +194,8 @@ void *bget(bctx *ctx,bufsize requested_size)
 	    struct bdhead *bdh;
 
 	    size += sizeof(struct bdhead) - sizeof(struct bhead);
-	    if ((bdh = BDH((*ctx->acqfcn)((bufsize) size))) != NULL) {
-
+	    if ((bdh = BDH((*(ctx->acqfcn))(ctx, (bufsize) size))) != NULL) {
+        
 		/*  Mark the buffer special by setting the size field
 		    of its header to zero.  */
 		bdh->bh.bsize = 0;
@@ -216,8 +216,8 @@ void *bget(bctx *ctx,bufsize requested_size)
 
 	    void *newpool;
 
-	    if ((newpool = (*ctx->acqfcn)((bufsize) ctx->exp_incr)) != NULL) {
-		bpool(newpool, ctx->exp_incr);
+	    if ((newpool = (*(ctx->acqfcn))(ctx, (bufsize) ctx->exp_incr)) != NULL) {
+		bpool(ctx, newpool, ctx->exp_incr);
                 buf =  bget(ctx,requested_size);  /* This can't, I say, can't
 						 get into a loop. */
 		return buf;
@@ -239,7 +239,6 @@ void *bget(bctx *ctx,bufsize requested_size)
 void *bgetz(bctx *ctx, bufsize size)
 {
     char *buf = (char *) bget(ctx, size);
-
     if (buf != NULL) {
 	struct bhead *b;
 	bufsize rsize;
@@ -324,7 +323,8 @@ void brel(bctx *ctx, void *buf)
 		 (MemSize) (bdh->tsize - sizeof(struct bdhead)));
 #endif /* FreeWipe */
 	assert(ctx->relfcn != NULL);
-	(*ctx->relfcn)((void *) bdh);      /* Release it directly. */
+    
+	(*(ctx->relfcn))(ctx, (void *) bdh);      /* Release it directly. */
 	return;
     }
 #endif /* BECtl */
@@ -368,9 +368,9 @@ void brel(bctx *ctx, void *buf)
         /* The previous buffer isn't allocated.  Insert this buffer
 	   on the free list as an isolated free block. */
 
-	assert(ctx->freelist.ql.blink->ql.flink == &ctx->freelist);
-	assert(ctx->freelist.ql.flink->ql.blink == &ctx->freelist);
-	b->ql.flink = &ctx->freelist;
+	assert(ctx->freelist.ql.blink->ql.flink == &(ctx->freelist));
+	assert(ctx->freelist.ql.flink->ql.blink == &(ctx->freelist));
+	b->ql.flink = &(ctx->freelist);
 	b->ql.blink = ctx->freelist.ql.blink;
 	ctx->freelist.ql.blink = b;
 	b->ql.blink->ql.flink = b;
@@ -431,8 +431,8 @@ void brel(bctx *ctx, void *buf)
 	/*  Unlink the buffer from the free list  */
 	b->ql.blink->ql.flink = b->ql.flink;
 	b->ql.flink->ql.blink = b->ql.blink;
-
-	(*ctx->relfcn)(b);
+    
+	(*(ctx->relfcn))(ctx, b);
 #ifdef BufStats
 	ctx->numprel++;		      /* Nr of expansion block releases */
 	ctx->numpblk--;		      /* Total number of blocks */
@@ -447,9 +447,9 @@ void brel(bctx *ctx, void *buf)
 /*  BECTL  --  Establish automatic pool expansion control  */
 
 void bectl(bctx *ctx, 
-        int (*compact) _((bufsize sizereq, int sequence)), 
-        void *(*acquire) _((bufsize size)), 
-        void (*release) _((void *buf)),
+        int (*compact) (struct bctx *ctx, bufsize sizereq, int sequence), 
+        void *(*acquire) (struct bctx *ctx, bufsize size), 
+        void (*release) (struct bctx *ctx, void *buf),
         bufsize pool_incr)
 {
     ctx->compfcn = compact;
@@ -496,9 +496,9 @@ void bpool(bctx *ctx, void *buf, bufsize len)
 
     /* Chain the new block to the free list. */
 
-    assert(ctx->freelist.ql.blink->ql.flink == &ctx->freelist);
-    assert(ctx->freelist.ql.flink->ql.blink == &ctx->freelist);
-    b->ql.flink = &ctx->freelist;
+    assert(ctx->freelist.ql.blink->ql.flink == &(ctx->freelist));
+    assert(ctx->freelist.ql.flink->ql.blink == &(ctx->freelist));
+    b->ql.flink = &(ctx->freelist);
     b->ql.blink = ctx->freelist.ql.blink;
     ctx->freelist.ql.blink = b;
     b->ql.blink->ql.flink = b;
@@ -542,7 +542,7 @@ void bstats(bctx *ctx,
     *curalloc = ctx->totalloc;
     *totfree = 0;
     *maxfree = -1;
-    while (b != &ctx->freelist) {
+    while (b != &(ctx->freelist)) {
 	assert(b->bh.bsize > 0);
 	*totfree += b->bh.bsize;
 	if (b->bh.bsize > *maxfree) {
@@ -730,8 +730,8 @@ int bpoolv(bctx *ctx, void *buf)
 void binit(bctx *ctx) {
     ctx->freelist.bh.prevfree = 0;
     ctx->freelist.bh.bsize = 0;
-    ctx->freelist.ql.flink = &ctx->freelist;
-    ctx->freelist.ql.blink = &ctx->freelist;
+    ctx->freelist.ql.flink = &(ctx->freelist);
+    ctx->freelist.ql.blink = &(ctx->freelist);
 #ifdef BufStats
     ctx->totalloc = 0;
     ctx->numget = 0;

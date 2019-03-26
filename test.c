@@ -5,9 +5,11 @@
 	*			*
         \***********************/
 
-#ifdef TestProg
+#include "bget.h"
 
-#define Repeatable  1		      /* Repeatable pseudorandom sequence */
+#define TestProg 20000
+
+#define Repeatable  0		      /* Repeatable pseudorandom sequence */
 				      /* If Repeatable is not defined, a
 					 time-seeded pseudorandom sequence
 					 is generated, exercising BGET with
@@ -29,11 +31,12 @@
 #define dumpFree    0		      /* Dump free buffers ? */
 
 #ifndef Repeatable
-extern long time();
+#include <stdlib.h>
 #endif
 
-extern char *malloc();
-extern int free _((char *));
+#include <malloc.h>
+#include <stdio.h>
+#include <assert.h>
 
 static char *bchain = NULL;	      /* Our private buffer chain */
 static char *bp = NULL; 	      /* Our initial buffer pool */
@@ -63,8 +66,7 @@ void srand(seed)
 
 /*  STATS  --  Edit statistics returned by bstats() or bstatse().  */
 
-static void stats(when)
-  char *when;
+static void stats(bctx *ctx, char *when)
 {
     bufsize cural, totfree, maxfree;
     long nget, nfree;
@@ -73,16 +75,16 @@ static void stats(when)
     long totblocks, npget, nprel, ndget, ndrel;
 #endif
 
-    bstats(&cural, &totfree, &maxfree, &nget, &nfree);
-    V printf(
+    bstats(ctx, &cural, &totfree, &maxfree, &nget, &nfree);
+    printf(
         "%s: %ld gets, %ld releases.  %ld in use, %ld free, largest = %ld\n",
 	when, nget, nfree, (long) cural, (long) totfree, (long) maxfree);
 #ifdef BECtl
-    bstatse(&pincr, &totblocks, &npget, &nprel, &ndget, &ndrel);
-    V printf(
+    bstatse(ctx, &pincr, &totblocks, &npget, &nprel, &ndget, &ndrel);
+    printf(
          "  Blocks: size = %ld, %ld (%ld bytes) in use, %ld gets, %ld frees\n",
 	 (long)pincr, totblocks, pincr * totblocks, npget, nprel);
-    V printf("  %ld direct gets, %ld direct frees\n", ndget, ndrel);
+    printf("  %ld direct gets, %ld direct frees\n", ndget, ndrel);
 #endif /* BECtl */
 }
 
@@ -91,22 +93,20 @@ static int protect = 0; 	      /* Disable compaction during bgetr() */
 
 /*  BCOMPACT  --  Compaction call-back function.  */
 
-static int bcompact(bsize, seq)
-  bufsize bsize;
-  int seq;
+static int bcompact(bctx *ctx, bufsize bsize, int seq)
 {
 #ifdef CompactTries
     char *bc = bchain;
     int i = rand() & 0x3;
 
 #ifdef COMPACTRACE
-    V printf("Compaction requested.  %ld bytes needed, sequence %d.\n",
+    printf("Compaction requested.  %ld bytes needed, sequence %d.\n",
 	(long) bsize, seq);
 #endif
 
     if (protect || (seq > CompactTries)) {
 #ifdef COMPACTRACE
-        V printf("Compaction gave up.\n");
+        printf("Compaction gave up.\n");
 #endif
 	return 0;
     }
@@ -124,13 +124,13 @@ static int bcompact(bsize, seq)
 	fb = *((char **) bc);
 	if (fb != NULL) {
 	    *((char **) bc) = *((char **) fb);
-	    brel((void *) fb);
+	    brel(ctx, (void *) fb);
 	    return 1;
 	}
     }
 
 #ifdef COMPACTRACE
-    V printf("Compaction bailed out.\n");
+    printf("Compaction bailed out.\n");
 #endif
 #endif /* CompactTries */
     return 0;
@@ -138,8 +138,7 @@ static int bcompact(bsize, seq)
 
 /*  BEXPAND  --  Expand pool call-back function.  */
 
-static void *bexpand(size)
-  bufsize size;
+static void *bexpand(bctx *ctx, bufsize size)
 {
     void *np = NULL;
     bufsize cural, totfree, maxfree;
@@ -147,13 +146,13 @@ static void *bexpand(size)
 
     /* Don't expand beyond the total allocated size given by PoolSize. */
 
-    bstats(&cural, &totfree, &maxfree, &nget, &nfree);
+    bstats(ctx, &cural, &totfree, &maxfree, &nget, &nfree);
 
     if (cural < PoolSize) {
 	np = (void *) malloc((unsigned) size);
     }
 #ifdef EXPTRACE
-    V printf("Expand pool by %ld -- %s.\n", (long) size,
+    printf("Expand pool by %ld -- %s.\n", (long) size,
         np == NULL ? "failed" : "succeeded");
 #endif
     return np;
@@ -161,17 +160,16 @@ static void *bexpand(size)
 
 /*  BSHRINK  --  Shrink buffer pool call-back function.  */
 
-static void bshrink(buf)
-  void *buf;
+static void bshrink(bctx *ctx, void *buf)
 {
     if (((char *) buf) == bp) {
 #ifdef EXPTRACE
-        V printf("Initial pool released.\n");
+        printf("Initial pool released.\n");
 #endif
 	bp = NULL;
     }
 #ifdef EXPTRACE
-    V printf("Shrink pool.\n");
+    printf("Shrink pool.\n");
 #endif
     free((char *) buf);
 }
@@ -206,17 +204,19 @@ static bufsize blimit(bs)
 
 int main()
 {
+    bctx context;
+    binit(&context);
+    bctx *ctx = &context;
     int i;
     double x;
-
     /* Seed the random number generator.  If Repeatable is defined, we
        always use the same seed.  Otherwise, we seed from the clock to
        shake things up from run to run. */
 
 #ifdef Repeatable
-    V srand(1234);
+    srand(1234);
 #else
-    V srand((int) time((long *) NULL));
+    srand((int) time((long *) NULL));
 #endif
 
     /*	Compute x such that pow(x, p) ranges between 1 and 4*ExpIncr as
@@ -228,19 +228,19 @@ int main()
     x = exp(log(4.0 * ExpIncr) / (ExpIncr - 1.0));
 
 #ifdef BECtl
-    bectl(bcompact, bexpand, bshrink, (bufsize) ExpIncr);
+    bectl(ctx, bcompact, bexpand, bshrink, (bufsize) ExpIncr);
     bp = malloc(ExpIncr);
     assert(bp != NULL);
-    bpool((void *) bp, (bufsize) ExpIncr);
+    bpool(ctx, (void *) bp, (bufsize) ExpIncr);
 #else
     bp = malloc(PoolSize);
     assert(bp != NULL);
-    bpool((void *) bp, (bufsize) PoolSize);
+    bpool(ctx, (void *) bp, (bufsize) PoolSize);
 #endif
 
-    stats("Create pool");
-    V bpoolv((void *) bp);
-    bpoold((void *) bp, dumpAlloc, dumpFree);
+    stats(ctx, "Create pool");
+    bpoolv(ctx, (void *) bp);
+    bpoold(ctx, (void *) bp, dumpAlloc, dumpFree);
 
     for (i = 0; i < TestProg; i++) {
 	char *cb;
@@ -249,9 +249,9 @@ int main()
 	assert(bs <= (((bufsize) 4) * ExpIncr));
 	bs = blimit(bs);
 	if (rand() & 0x400) {
-	    cb = (char *) bgetz(bs);
+	    cb = (char *) bgetz(ctx, bs);
 	} else {
-	    cb = (char *) bget(bs);
+	    cb = (char *) bget(ctx, bs);
 	}
 	if (cb == NULL) {
 #ifdef EasyOut
@@ -265,7 +265,7 @@ int main()
 		fb = *((char **) bc);
 		if (fb != NULL) {
 		    *((char **) bc) = *((char **) fb);
-		    brel((void *) fb);
+		    brel(ctx, (void *) fb);
 		}
 		continue;
 	    }
@@ -291,7 +291,7 @@ int main()
 		fb = *((char **) bc);
 		if (fb != NULL) {
 		    *((char **) bc) = *((char **) fb);
-		    brel((void *) fb);
+		    brel(ctx, (void *) fb);
 		}
 	    }
 	}
@@ -319,7 +319,7 @@ int main()
 #ifdef BECtl
 		    protect = 1;      /* Protect against compaction */
 #endif
-		    newb = (char *) bgetr((void *) fb, bs);
+		    newb = (char *) bgetr(ctx, (void *) fb, bs);
 #ifdef BECtl
 		    protect = 0;
 #endif
@@ -330,26 +330,25 @@ int main()
 	    }
 	}
     }
-    stats("\nAfter allocation");
+    stats(ctx, "\nAfter allocation");
     if (bp != NULL) {
-	V bpoolv((void *) bp);
-	bpoold((void *) bp, dumpAlloc, dumpFree);
+	bpoolv(ctx, (void *) bp);
+	bpoold(ctx, (void *) bp, dumpAlloc, dumpFree);
     }
 
     while (bchain != NULL) {
 	char *buf = bchain;
 
 	bchain = *((char **) buf);
-	brel((void *) buf);
+	brel(ctx, (void *) buf);
     }
-    stats("\nAfter release");
+    stats(ctx, "\nAfter release");
 #ifndef BECtl
     if (bp != NULL) {
-	V bpoolv((void *) bp);
-	bpoold((void *) bp, dumpAlloc, dumpFree);
+	bpoolv(ctx, (void *) bp);
+	bpoold(ctx, (void *) bp, dumpAlloc, dumpFree);
     }
 #endif
 
     return 0;
 }
-#endif
