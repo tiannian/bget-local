@@ -41,7 +41,11 @@
 					 bectl() function for automatic
 					 pool space control.  */
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+                     
 
 typedef long bufsize;
 
@@ -125,5 +129,9 @@ void	bufdump     (bctx *ctx, void *buf);
 void	bpoold	    (bctx *ctx, void *pool, int dumpalloc, int dumpfree);
 int	    bpoolv	    (bctx *ctx, void *pool);
 void    binit       (bctx *ctx);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
